@@ -17,7 +17,13 @@ RUN apt-get update \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install . \
+# Keep packages already present in the Python base/runtime dependency set at
+# patched versions. These floors address the vulnerabilities reported by Trivy.
+RUN pip install --no-cache-dir --upgrade \
+      "setuptools>=78.1.1" \
+      "msgpack>=1.2.3" \
+      "urllib3>=2.8.0" \
+ && pip install . \
  && playwright install --with-deps chromium \
  && rm -rf /var/lib/apt/lists/* \
  && chmod -R a+rX /ms-playwright
