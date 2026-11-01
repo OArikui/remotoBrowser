@@ -5,14 +5,17 @@ from __future__ import annotations
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from package.browser.policies import normalize_hostname, parse_allowed_hosts
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # --- アプリ全般 ---
+    app_env: Literal["development", "production"] = "development"
     app_secret_key: str = Field(default="", validate_default=True)
     base_url: str = "http://localhost:8000"
     bind_host: str = "0.0.0.0"
@@ -26,6 +29,10 @@ class Settings(BaseSettings):
     discord_client_secret: str = ""
     # カンマ区切り。空なら全員許可。
     allowed_discord_ids: str = ""
+
+    # --- 管理対象ブラウザサイト ---
+    # 完全一致ホスト名をカンマ区切りで指定。ワイルドカード・IPアドレスは不可。
+    browser_allowed_hosts: str = ""
 
     # --- データベース ---
     database_path: str = "data/app.db"
@@ -59,6 +66,12 @@ class Settings(BaseSettings):
             )
         return value
 
+    @field_validator("browser_allowed_hosts")
+    @classmethod
+    def _check_browser_allowed_hosts(cls, value: str) -> str:
+        hosts = parse_allowed_hosts(value)
+        return ",".join(sorted(hosts))
+
     @field_validator("base_url")
     @classmethod
     def _check_base_url(cls, value: str) -> str:
@@ -66,6 +79,34 @@ class Settings(BaseSettings):
         if parts.scheme not in {"http", "https"} or not parts.netloc:
             raise ValueError("BASE_URL must look like https://example.com")
         return value.rstrip("/")
+
+    @model_validator(mode="after")
+    def _check_production_settings(self) -> Settings:
+        if self.app_env == "production":
+            if not self.base_url.startswith("https://"):
+                raise ValueError("production BASE_URL must use HTTPS")
+            if not self.discord_client_id or not self.discord_client_secret:
+                raise ValueError("production requires Discord OAuth2 client credentials")
+            if not self.allowed_ids:
+                raise ValueError("production requires ALLOWED_DISCORD_IDS")
+            if not self.browser_hosts:
+                raise ValueError("production requires BROWSER_ALLOWED_HOSTS")
+            if self.browser_runtime != "process":
+                raise ValueError("production requires BROWSER_RUNTIME=process")
+            if self.enable_docs:
+                raise ValueError("ENABLE_DOCS must be false in production")
+            start_host = urlsplit(self.default_start_url).hostname
+            try:
+                normalized_start_host = normalize_hostname(start_host or "")
+            except ValueError as exc:
+                raise ValueError("DEFAULT_START_URL must use an allowlisted DNS hostname") from exc
+            if normalized_start_host not in self.browser_hosts:
+                raise ValueError("DEFAULT_START_URL host must be in BROWSER_ALLOWED_HOSTS")
+        return self
+
+    @property
+    def browser_hosts(self) -> frozenset[str]:
+        return parse_allowed_hosts(self.browser_allowed_hosts)
 
     @property
     def origin(self) -> str:

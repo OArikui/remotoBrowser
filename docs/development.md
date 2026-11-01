@@ -33,7 +33,8 @@ pip-audit --skip-editable
 1. 「ブラウザを起動」でChromiumの画面が出る(kioskモードでウィンドウが画面いっぱいに出るか)
 2. 日本語サイトの文字が表示される(`fonts-noto-cjk` 導入済み)
 3. 終了後に `ps` で `Xvfb` / `x11vnc` / `chromium` が残っていない
-4. `docker compose` のログに `blocked request to non-public destination` が出るか(内部宛に移動してみる)
+4. `BROWSER_ALLOWED_HOSTS` に含まれないホストがHTTP(S)・WebSocketともに拒否されることを確認
+5. 許可リストのドメインがプライベートIPへ解決された場合に拒否されることを確認
 
 うまく動かない場合の切り分け:
 
@@ -47,4 +48,4 @@ pip-audit --skip-editable
 ## ブランチ運用(計画書 3-2)
 
 `main` / `develop` / `feature/*` / `release/v*`。バージョンは計画書のv0.1.0〜v1.0.0に沿う
-(現在のコードは **v0.5.0** 相当: セッション管理まで)。
+(現在のコードは **v0.6.0** 相当: セッション管理まで)。

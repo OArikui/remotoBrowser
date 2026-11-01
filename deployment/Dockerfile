@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
-# Phase 0-3 の試作用: API と Browser Runtime(Xvfb + x11vnc + Chromium)を1コンテナに同居させる。
-# 外部公開時はブラウザ実行環境を別コンテナへ分離すること(docs/architecture.md 参照)。
+# OCIの初期構成: APIとBrowser Runtime(Xvfb + x11vnc + Chromium)を同居させる。
+# 接続先は完全一致ホスト許可リストで制限し、出口フィルタはdeployment/ociを参照。
 FROM python:3.13-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \

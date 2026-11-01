@@ -25,11 +25,24 @@ from urllib.parse import urlsplit
 
 from package.utils import new_id
 
-from .policies import NETWORK_SCHEMES, UrlChecker, UrlNotAllowed, check_url
+from .policies import (
+    NETWORK_SCHEMES,
+    UrlChecker,
+    UrlNotAllowed,
+    check_websocket_url,
+    check_url,
+)
 from .runtime import RuntimeHandle
 
 if TYPE_CHECKING:
-    from playwright.async_api import BrowserContext, Page, Playwright, Request, Route
+    from playwright.async_api import (
+        BrowserContext,
+        Page,
+        Playwright,
+        Request,
+        Route,
+        WebSocketRoute,
+    )
 
 log = logging.getLogger("rb.browser")
 
@@ -38,33 +51,32 @@ _X11_SOCKET_DIR = Path("/tmp/.X11-unix")
 
 
 class RequestGuard:
-    """ブラウザが発行するすべてのHTTP(S)リクエストの宛先を検査する(リダイレクト先も対象)。"""
+    """HTTP(S)とWebSocketの宛先を毎回検査する。"""
 
-    def __init__(self, checker: UrlChecker = check_url, ttl: float = 30.0) -> None:
+    def __init__(self, checker: UrlChecker = check_url) -> None:
         self._checker = checker
-        self._ttl = ttl
-        self._cache: dict[str, tuple[float, bool]] = {}
 
     async def allows(self, url: str) -> bool:
-        parts = urlsplit(url)
+        try:
+            parts = urlsplit(url)
+        except ValueError:
+            return False
         if parts.scheme in _LOCAL_SCHEMES:
             return True
         if parts.scheme not in NETWORK_SCHEMES:
             return False
-        key = f"{parts.scheme}://{parts.hostname}:{parts.port}"
-        now = time.monotonic()
-        cached = self._cache.get(key)
-        if cached is not None and cached[0] > now:
-            return cached[1]
         try:
             await self._checker(url)
-            ok = True
-        except UrlNotAllowed:
-            ok = False
-        if len(self._cache) > 1024:
-            self._cache.clear()
-        self._cache[key] = (now + self._ttl, ok)
-        return ok
+        except (UrlNotAllowed, ValueError, OSError, TimeoutError):
+            return False
+        return True
+
+    async def allows_websocket(self, url: str) -> bool:
+        try:
+            await check_websocket_url(url, self._checker)
+        except (UrlNotAllowed, ValueError, OSError, TimeoutError):
+            return False
+        return True
 
 
 @dataclass
@@ -218,11 +230,13 @@ class ProcessRuntime:
                 "--disable-dev-shm-usage",
                 "--no-first-run",
                 "--no-default-browser-check",
+                "--disable-quic",  # UDP/443を使うHTTP/3を無効化し、出口ポリシーを単純化
             ],
         )
         inst.context = context
         context.on("close", lambda *_: setattr(inst, "closed", True))
         await context.route("**/*", self._route_handler)
+        await context.route_web_socket("**/*", self._websocket_route_handler)
 
         page = context.pages[0] if context.pages else await context.new_page()
         with contextlib.suppress(Exception):  # 読み込み失敗でもブラウザ自体は使える
@@ -236,7 +250,21 @@ class ProcessRuntime:
                 log.warning("blocked request to non-public destination")
                 await route.abort("blockedbyclient")
         except Exception:
-            log.debug("route handler failed", exc_info=True)
+            log.warning("request guard failed; aborting browser request", exc_info=True)
+            with contextlib.suppress(Exception):
+                await route.abort("blockedbyclient")
+
+    async def _websocket_route_handler(self, websocket: WebSocketRoute) -> None:
+        try:
+            if await self._guard.allows_websocket(websocket.url):
+                await websocket.connect()
+                return
+            log.warning("blocked WebSocket request to non-allowlisted destination")
+            await websocket.close(code=1008, reason="Destination is not allowed")
+        except Exception:
+            log.warning("WebSocket guard failed; closing browser socket", exc_info=True)
+            with contextlib.suppress(Exception):
+                await websocket.close(code=1011, reason="Destination check failed")
 
     async def _teardown(self, runtime_id: str) -> None:
         inst = self._instances.pop(runtime_id, None)

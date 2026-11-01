@@ -1,0 +1,84 @@
+name: remotobrowser
+
+services:
+  app:
+    image: ${APP_IMAGE:?Set APP_IMAGE to the published ARM64 image}
+    container_name: remotobrowser-app
+    env_file:
+      - ../.env
+    environment:
+      APP_ENV: production
+      BIND_HOST: 0.0.0.0
+      PORT: "8080"
+      DATABASE_PATH: /app/data/app.db
+      BROWSER_RUNTIME: process
+      TRUST_PROXY_HEADERS: "true"
+      ENABLE_DOCS: "false"
+    expose:
+      - "8080"
+    volumes:
+      - appdata:/app/data
+    shm_size: 1gb
+    mem_limit: 5g
+    pids_limit: 512
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    networks:
+      rb-backend:
+        ipv4_address: 172.30.0.3
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: remotobrowser-caddy
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env}
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 256m
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    networks:
+      rb-backend:
+        ipv4_address: 172.30.0.2
+
+networks:
+  rb-backend:
+    name: remotobrowser-backend
+    driver: bridge
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  appdata:
+    name: remotobrowser-appdata
+  caddy_data:
+    name: remotobrowser-caddy-data
+  caddy_config:
+    name: remotobrowser-caddy-config

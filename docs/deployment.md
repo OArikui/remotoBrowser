@@ -1,32 +1,36 @@
-# デプロイ(Phase 6 に向けたメモ)
+# デプロイ
 
-現時点のコードはローカルDockerでの動作確認までが対象。公開する前に次を決めて実施する。
+本プロジェクトの初期サーバー運用先は Oracle Cloud Infrastructure (OCI) Ampere A1 / Ubuntu 24.04 ARM64 です。
 
-## 手動デプロイの流れ(計画書: 最初は自動デプロイしない)
+## OCI
 
-1. PRをマージし、CIが全部通っていることを確認
-2. イメージをビルドしてレジストリへ push
-3. ホスティングへ反映(Cloud Run なら `gcloud run deploy`)
-4. `/health` と、ログイン〜ブラウザ起動〜終了までを手動確認
+構築手順、VM・VCN・NSG、Docker Engine、Caddy HTTPS、SQLite永続化、ブラウザ出口制限、GitHub Actionsの手動デプロイは [oci.md](oci.md) を参照してください。
 
-## Cloud Run で必要になること(計画書 2-9)
+- Compose: `deployment/compose.oci.yaml`
+- Caddy: `deployment/Caddyfile`
+- 初期セットアップ: `deployment/oci/bootstrap.sh`
+- ブラウザコンテナ出口制限: `deployment/oci/remotobrowser-egress-filter.sh`
+- systemd unit: `deployment/oci/remotobrowser-egress-filter.service`
+- CI: `.github/workflows/ci.yml`
+- 手動デプロイ: `.github/workflows/deploy-oci.yml`
 
-- WebSocketは最大60分で切れる → セッション上限(30分)を超えない設計は済み。切断時の自動再接続は未実装
-- インスタンスが複数になるとセッション状態が共有されない → 初期は `max-instances=1`
-- ローカルファイルは永続化されない → **SQLiteは本番では使わない**(外部DBへ。`Repository` の差し替え)
-- WebSocket接続中は課金対象 → 無料枠内に収まるか実測(Phase 7)
-- 環境変数: `BASE_URL`(公開URL)、`TRUST_PROXY_HEADERS=true`、`PORT`(Cloud Runが設定)
-- シークレット(`APP_SECRET_KEY`, `DISCORD_CLIENT_SECRET`)は Secret Manager から注入
+## ローカル開発
 
-## 公開前チェックリスト
+Windows PCにDocker DesktopやWSL2を入れる必要はありません。Python環境で `BROWSER_RUNTIME=fake` を指定すれば、API・認証・セッションのテストができます。実Chromiumの統合確認はOCI上で実施します。
 
-- [ ] `ALLOWED_DISCORD_IDS` を設定した
-- [ ] `BASE_URL` が https の公開URLで、Discordの Redirect URI と一致している
-- [ ] Browser Runtime に出口制限(非公開IP宛の遮断)をかけた(`docs/security.md` 限界1)
-- [ ] 計画書どおり `MAX_CONCURRENT_SESSIONS=1` から始めた
-- [ ] 無料枠の上限アラート(課金アラート)を設定した
+## デプロイ前チェック
 
-## 構成の分離(計画書の最終形)
+- [ ] `APP_ENV=production`
+- [ ] `BASE_URL` はHTTPSの公開URL
+- [ ] Discord OAuth2 Redirect URIが `${BASE_URL}/auth/callback` と一致
+- [ ] `ALLOWED_DISCORD_IDS` が空でない
+- [ ] `BROWSER_ALLOWED_HOSTS` に管理対象の正確なホスト名のみを列挙
+- [ ] `DEFAULT_START_URL` のホストが許可リスト内
+- [ ] OCI NSGで公開するのはSSH(管理元IP限定)・TCP 80/443のみ
+- [ ] `DOCKER-USER` 出口フィルタが適用済み
+- [ ] SQLite/Caddyデータのバックアップを確認
+- [ ] 実ブラウザ起動、WebSocket、許可ホスト外拒否を実機確認
 
-Cloudflare Pages(フロント)+ Cloud Run(API)に分ける場合、Cookie/CSRF/WebSocketが別オリジンになる。
-CookieのSameSite・CORS・Originの扱いを設計し直す必要があるため、まずは「APIと同一オリジンでフロントも配信」(現状)のまま公開して計測することを推奨。
+## 旧Cloud Run案について
+
+Cloud Run構成は初期OCI構成の対象外です。WebSocketの接続寿命、複数インスタンス間の状態共有、SQLite永続化の問題があるため、別途アーキテクチャを設計し直す必要があります。

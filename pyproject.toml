@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "remote-browser"
-version = "0.5.0"
-description = "Discord認証付きのリモートChromium(noVNC)サービス"
+version = "0.6.0"
+description = "Discord-authenticated remote browser testing for managed websites"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -14,7 +14,7 @@ dependencies = [
     "httpx>=0.27",
     "pydantic-settings>=2.6",
     "itsdangerous>=2.2",
-    "playwright>=1.48",
+    "playwright>=1.57",
 ]
 
 [project.optional-dependencies]

@@ -17,6 +17,7 @@ FastAPI (Uvicorn) ── Discord OAuth2 ── SQLite
 ```
 
 - **Playwright** はChromiumの起動・終了・戻る/進む/再読み込み/URL移動を担当。
+- ChromiumのHTTP(S)通信とWebSocketは `BROWSER_ALLOWED_HOSTS` の完全一致ホスト許可リストで検査する。サブドメインは暗黙に許可しない。
 - **noVNC** は画面表示とマウス・キーボード入力の伝達を担当(画面転送の独自実装なし)。
 - x11vnc はセッションごとに `127.0.0.1` の空きポートだけで待ち受け、外部には出さない。
   利用者は FastAPI の WebSocket 中継 (`/ws/vnc/{session_id}`) を通してのみ到達でき、
@@ -43,11 +44,11 @@ FastAPI (Uvicorn) ── Discord OAuth2 ── SQLite
 | websockify(想定) | FastAPIのWebSocket中継 | VNCポートを外に出さず、認証・所有者検証を同じ場所で行うため |
 | api / browser / proxy の別コンテナ | 試作は1コンテナ | 計画書2-1の「初期試作では同居可」に従う。公開前に分離する |
 | `src/utils.py` | `src/package/utils.py` | `utils` というトップレベル名は他ライブラリと衝突しやすいため |
-| 本番DBはPostgreSQL | SQLite(`Repository` 経由) | Cloud Runでは永続化できないため、公開時にPostgreSQL実装へ差し替える |
-| (なし) | `ALLOWED_DISCORD_IDS` | 任意サイトを中継するサービスなので、公開前に利用者を絞れるようにするため |
+| 本番DBはPostgreSQL | OCI単一VMでは永続ボリューム上のSQLite | 単一インスタンスで運用し、バックアップを取得する。複数VM・高可用性へ拡張するときにPostgreSQLへ移行する |
+| (なし) | `ALLOWED_DISCORD_IDS` と `BROWSER_ALLOWED_HOSTS` | 利用者をDiscord IDで限定し、ブラウザ接続先も管理対象ホストの完全一致リストに限定するため |
 
-## 公開前に必要な分離(Phase 5〜6)
+## OCI初期構成と将来の分離
 
-1. Browser Runtime を別コンテナ/別サービスへ分離し、API からは内部ネットワーク経由で操作する。
-2. Browser Runtime のコンテナに **外部(公開インターネット)宛のみ許可する出口制限** をかける(`docs/security.md`)。
-3. セッション状態の外部管理(Cloud Run の複数インスタンス対策)。
+- OCI初期構成は単一VM・単一アプリコンテナで、FastAPIとBrowser Runtimeを同居させる。
+- Caddyだけがアプリの8080番へ接続し、ホスト側 `DOCKER-USER` フィルタがアプリコンテナの私有ネットワーク宛て・非Webポート宛ての新規通信を遮断する。
+- 一般公開や複数利用者への拡張前にはBrowser Runtimeを別コンテナ/別権限へ分離し、APIから内部API経由で操作する。セッション状態の外部管理も別途必要。
