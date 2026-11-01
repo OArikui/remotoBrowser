@@ -256,7 +256,7 @@ class ProcessRuntime:
     async def _websocket_route_handler(self, websocket: WebSocketRoute) -> None:
         try:
             if await self._guard.allows_websocket(websocket.url):
-                await websocket.connect()
+                websocket.connect_to_server()
                 return
             log.warning("blocked WebSocket request to non-allowlisted destination")
             await websocket.close(code=1008, reason="Destination is not allowed")
