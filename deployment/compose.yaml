@@ -1,0 +1,35 @@
+name: remote-browser
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    env_file: ../.env
+    environment:
+      PORT: "8080"
+    ports:
+      - "8000:8080" # BASE_URL=http://localhost:8000 と対応させる
+    volumes:
+      - appdata:/app/data
+    shm_size: "1gb" # Chromiumの共有メモリ
+    mem_limit: 1536m
+    pids_limit: 512
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=512m,mode=1777 # ブラウザプロファイルは一時領域のみ
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  appdata: {}

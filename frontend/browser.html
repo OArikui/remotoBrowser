@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Remote Browser</title>
+    <link rel="stylesheet" href="/css/app.css" />
+  </head>
+  <body class="app">
+    <header class="topbar">
+      <strong>Remote Browser</strong>
+      <span id="status" class="badge">未接続</span>
+      <span class="muted">残り <span id="remaining">--:--</span></span>
+      <span class="spacer"></span>
+      <span id="user-name" class="muted"></span>
+      <button id="btn-start" class="primary" type="button">ブラウザを起動</button>
+      <button id="btn-stop" class="danger" type="button" disabled>セッション終了</button>
+      <button id="btn-logout" type="button">ログアウト</button>
+    </header>
+    <div class="toolbar">
+      <button id="btn-back" type="button" disabled title="戻る">←</button>
+      <button id="btn-forward" type="button" disabled title="進む">→</button>
+      <button id="btn-reload" type="button" disabled title="再読み込み">⟳</button>
+      <form id="url-form">
+        <input id="url-input" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://example.com" disabled />
+        <button id="btn-go" type="submit" disabled>移動</button>
+      </form>
+      <button id="btn-fullscreen" type="button" disabled title="全画面表示">全画面</button>
+    </div>
+    <div id="screen-wrap">
+      <div id="screen"></div>
+      <div id="message">「ブラウザを起動」を押すと、使い捨てのChromiumが開きます。<br />終了するとCookieや履歴はすべて破棄されます。</div>
+    </div>
+    <script type="module" src="/js/browser.js"></script>
+  </body>
+</html>

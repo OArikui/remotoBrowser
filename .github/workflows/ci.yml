@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Ruff (lint)
+        run: ruff check .
+      - name: Ruff (format)
+        run: ruff format --check .
+      - name: basedpyright
+        run: basedpyright
+      - name: pytest
+        run: pytest
+      - name: pip-audit
+        run: pip-audit --skip-editable
+
+  docker:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployment/Dockerfile
+          load: true
+          push: false
+          tags: remote-browser:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Security scan (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: remote-browser:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+  ci-success:
+    needs: [quality, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "CI passed. Deployment is manual (see docs/deployment.md)."
