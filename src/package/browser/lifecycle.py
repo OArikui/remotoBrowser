@@ -16,7 +16,6 @@ import os
 import shutil
 import socket
 import tempfile
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,8 +28,8 @@ from .policies import (
     NETWORK_SCHEMES,
     UrlChecker,
     UrlNotAllowed,
-    check_websocket_url,
     check_url,
+    check_websocket_url,
 )
 from .runtime import RuntimeHandle
 

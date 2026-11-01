@@ -86,19 +86,24 @@ async def test_exact_host_allowlist_and_websocket_policy() -> None:
     await checker("https://example.com/owned-app")
     await check_websocket_url("wss://example.com/socket", checker)
 
-    for url in (
+    disallowed_websockets = (
+        "wss://localhost/socket",
+        "ws://internal.example/socket",
+    )
+    for url in disallowed_websockets:
+        with pytest.raises(UrlNotAllowed):
+            await check_websocket_url(url, checker)
+
+    disallowed_http_urls = (
         "https://www.example.com/",
         "https://example.com.evil.invalid/",
         "https://evil.example.com/",
         "https://internal.example/",
         "https://example.com:8443/",
-        "wss://localhost/socket",
-    ):
+    )
+    for url in disallowed_http_urls:
         with pytest.raises(UrlNotAllowed):
-            if url.startswith("ws"):
-                await check_websocket_url(url, checker)
-            else:
-                await checker(url)
+            await checker(url)
 
 
 def test_allowed_hosts_reject_wildcards_and_urls() -> None:
@@ -106,8 +111,14 @@ def test_allowed_hosts_reject_wildcards_and_urls() -> None:
         "example.com",
         "example.org",
     }
-    for invalid in ("*.example.com", "https://example.com", "example.com:443", "127.0.0.1"):
-        with pytest.raises(ValueError):
+    invalid_hosts = (
+        ("*.example.com", "invalid hostname"),
+        ("https://example.com", "invalid hostname"),
+        ("example.com:443", "invalid hostname"),
+        ("127.0.0.1", "IP addresses cannot be added"),
+    )
+    for invalid, error_message in invalid_hosts:
+        with pytest.raises(ValueError, match=error_message):
             parse_allowed_hosts(invalid)
 
 
