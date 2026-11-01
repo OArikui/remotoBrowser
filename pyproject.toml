@@ -9,7 +9,7 @@ description = "Discord-authenticated remote browser testing for managed websites
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastapi>=0.115",
+    "fastapi>=0.128,<0.129",  # Keep the tested Starlette 0.x WebSocket TestClient compatibility range.
     "uvicorn[standard]>=0.32",
     "httpx>=0.27",
     "pydantic-settings>=2.6",
