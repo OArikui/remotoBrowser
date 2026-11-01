@@ -68,14 +68,21 @@ async def vnc_proxy(websocket: WebSocket, session_id: str) -> None:
             await websocket.send_bytes(data)
 
     tasks = {asyncio.create_task(ws_to_tcp()), asyncio.create_task(tcp_to_ws())}
+    cancelled = False
     try:
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:
+        # Treat ASGI task cancellation during a WebSocket disconnect as tunnel shutdown.
+        # The cleanup below must finish before this connection handler returns.
+        cancelled = True
+        log.debug("VNC proxy cancelled during disconnect session=%s", session_id)
     finally:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         writer.close()
         with contextlib.suppress(Exception):
-            await writer.wait_closed()
-        with contextlib.suppress(Exception):
-            await websocket.close()
+            await asyncio.wait_for(writer.wait_closed(), timeout=2)
+        if not cancelled:
+            with contextlib.suppress(Exception):
+                await websocket.close()
