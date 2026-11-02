@@ -64,7 +64,33 @@ jobs:
           image-ref: remotobrowser:ci
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: "1"
+          format: json
+          output: trivy-results.json
+          exit-code: "0"
+      - name: Enforce Trivy vulnerability policy
+        run: |
+          python - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path("trivy-results.json").read_text(encoding="utf-8"))
+          findings = []
+          for result in report.get("Results") or []:
+              for vulnerability in result.get("Vulnerabilities") or []:
+                  if vulnerability.get("Severity") in {"CRITICAL", "HIGH"}:
+                      findings.append({
+                          "target": result.get("Target"),
+                          "type": result.get("Type"),
+                          "vulnerability": vulnerability,
+                      })
+
+          for finding in findings:
+              print(json.dumps(finding, ensure_ascii=False, indent=2))
+
+          print(f"High/Critical vulnerabilities: {len(findings)}")
+          sys.exit(1 if findings else 0)
+          PY
 
   ci-success:
     needs: [quality, docker]
