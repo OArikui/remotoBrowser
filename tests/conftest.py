@@ -100,6 +100,7 @@ def env_factory(tmp_path: Path) -> EnvFactory:
             "app_secret_key": "k" * 40,
             "discord_client_id": "cid",
             "discord_client_secret": "secret",
+            "browser_allowed_hosts": "example.com",
             "database_path": str(tmp_path / "app.db"),
             "browser_runtime": "fake",
             "novnc_dir": str(tmp_path / "no-novnc"),

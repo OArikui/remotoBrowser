@@ -76,6 +76,8 @@ def test_same_origin_accepted(client: TestClient, env: Env) -> None:
     headers = {"origin": env.settings.origin}
     with client.websocket_connect(f"/ws/vnc/{sid}", headers=headers) as ws:
         assert ws.receive_bytes() == b"RFB 003.008\n"
+        ws.send_bytes(b"RFB 003.008\n")
+        assert ws.receive_bytes() == b"RFB 003.008\n"
 
 
 def test_websocket_rejected_after_session_ends(client: TestClient, env: Env) -> None:

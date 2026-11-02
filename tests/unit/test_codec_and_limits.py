@@ -41,3 +41,6 @@ async def test_request_guard() -> None:
     assert not await guard.allows("http://localhost:9999/")
     assert not await guard.allows("file:///etc/passwd")
     assert not await guard.allows("chrome://settings")
+    assert await guard.allows_websocket("wss://example.com/socket")
+    assert not await guard.allows_websocket("wss://internal.example/socket")
+    assert not await guard.allows_websocket("ws://localhost/socket")

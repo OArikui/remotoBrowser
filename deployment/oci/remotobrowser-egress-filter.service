@@ -1,0 +1,13 @@
+[Unit]
+Description=Restrict Remote Browser container egress to public-routed destinations
+Requires=docker.service
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/remotobrowser-egress-filter.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

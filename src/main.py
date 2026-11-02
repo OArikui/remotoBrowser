@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -24,7 +25,12 @@ from package.auth.discord import DiscordClient, DiscordProvider
 from package.auth.oauth import SessionCodec
 from package.browser.lifecycle import ProcessRuntime
 from package.browser.manager import BrowserManager
-from package.browser.policies import UrlChecker, check_url
+from package.browser.policies import (
+    UrlChecker,
+    UrlNotAllowed,
+    build_url_checker,
+    normalize_hostname,
+)
 from package.browser.runtime import BrowserRuntime, FakeRuntime
 from package.config import Settings
 from package.database.connection import Database
@@ -40,16 +46,44 @@ from package.utils import configure_logging, utcnow
 log = logging.getLogger("rb.app")
 
 
+def _combine_url_checkers(settings: Settings, resolver_checker: UrlChecker) -> UrlChecker:
+    """テスト用チェッカーを許可リスト検査の後段に接続する。"""
+    allowed_hosts = settings.browser_hosts
+
+    async def checker(url: str) -> None:
+        try:
+            host = urlsplit(url).hostname
+        except ValueError as exc:
+            raise UrlNotAllowed("invalid URL") from exc
+        if host is None:
+            raise UrlNotAllowed("URL has no host")
+        try:
+            normalized = normalize_hostname(host)
+        except ValueError as exc:
+            raise UrlNotAllowed("destination hostname is not allowed") from exc
+        if normalized not in allowed_hosts:
+            raise UrlNotAllowed("destination host is not in BROWSER_ALLOWED_HOSTS")
+        await resolver_checker(url)
+
+    return checker
+
+
 def create_app(
     settings: Settings | None = None,
     *,
     runtime: BrowserRuntime | None = None,
     discord: DiscordProvider | None = None,
     clock: Callable[[], datetime] = utcnow,
-    url_checker: UrlChecker = check_url,
+    url_checker: UrlChecker | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     configure_logging(settings.log_level)
+    # アプリ入口とChromiumリクエストの両方で同一の完全一致ホスト制限を適用する。
+    checker = (
+        build_url_checker(settings.browser_hosts)
+        if url_checker is None
+        else _combine_url_checkers(settings, url_checker)
+    )
 
     db = Database(settings.database_path)
     db.init()
@@ -62,9 +96,9 @@ def create_app(
             runtime = ProcessRuntime(
                 width=settings.screen_width,
                 height=settings.screen_height,
-                url_checker=url_checker,
+                url_checker=checker,
             )
-    browser = BrowserManager(runtime, settings.default_start_url, url_checker)
+    browser = BrowserManager(runtime, settings.default_start_url, checker)
     sessions = SessionManager(repo, browser, settings, clock)
     discord_client = discord or DiscordClient(
         settings.discord_client_id, settings.discord_client_secret, settings.redirect_uri

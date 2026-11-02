@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import pytest
 
-from package.browser.policies import UrlNotAllowed, check_url, is_public_ip, normalize_url
+from package.browser.policies import (
+    UrlNotAllowed,
+    build_url_checker,
+    check_url,
+    check_websocket_url,
+    is_public_ip,
+    normalize_url,
+    parse_allowed_hosts,
+)
 from tests.conftest import fake_resolver
 
 
@@ -30,7 +38,10 @@ async def _check(url: str) -> None:
         "ftp://example.com/",
         "javascript:alert(1)",
         "http://user:pw@example.com/",
+        "http://example.com:8080/",
+        "http://example.com:0/",
         "https:///nohost",
+        "http://[::1",
     ],
 )
 async def test_blocked_urls(url: str) -> None:
@@ -40,7 +51,7 @@ async def test_blocked_urls(url: str) -> None:
 
 @pytest.mark.parametrize(
     "url",
-    ["https://example.com/path?q=1", "http://example.com:8080/", "http://93.184.216.34/"],
+    ["https://example.com/path?q=1", "http://93.184.216.34/"],
 )
 async def test_allowed_urls(url: str) -> None:
     await _check(url)
@@ -68,3 +79,74 @@ def test_is_public_ip() -> None:
     assert is_public_ip("93.184.216.34")
     assert not is_public_ip("fe80::1%eth0")
     assert not is_public_ip("not-an-ip")
+
+
+async def test_exact_host_allowlist_and_websocket_policy() -> None:
+    checker = build_url_checker(["example.com"], resolver=fake_resolver)
+    await checker("https://example.com/owned-app")
+    await check_websocket_url("wss://example.com/socket", checker)
+
+    disallowed_websockets = (
+        "wss://localhost/socket",
+        "ws://internal.example/socket",
+    )
+    for url in disallowed_websockets:
+        with pytest.raises(UrlNotAllowed):
+            await check_websocket_url(url, checker)
+
+    disallowed_http_urls = (
+        "https://www.example.com/",
+        "https://example.com.evil.invalid/",
+        "https://evil.example.com/",
+        "https://internal.example/",
+        "https://example.com:8443/",
+    )
+    for url in disallowed_http_urls:
+        with pytest.raises(UrlNotAllowed):
+            await checker(url)
+
+
+def test_allowed_hosts_reject_wildcards_and_urls() -> None:
+    assert parse_allowed_hosts("Example.com, example.org.") == {
+        "example.com",
+        "example.org",
+    }
+    invalid_hosts = (
+        ("*.example.com", "invalid hostname"),
+        ("https://example.com", "invalid hostname"),
+        ("example.com:443", "invalid hostname"),
+        ("127.0.0.1", "IP addresses cannot be added"),
+    )
+    for invalid, error_message in invalid_hosts:
+        with pytest.raises(ValueError, match=error_message):
+            parse_allowed_hosts(invalid)
+
+
+def test_production_settings_require_https_access_controls() -> None:
+    from pydantic import ValidationError
+
+    from package.config import Settings
+
+    base = {
+        "app_env": "production",
+        "app_secret_key": "s" * 48,
+        "base_url": "https://browser.example.org",
+        "discord_client_id": "client-id",
+        "discord_client_secret": "client-secret",
+        "allowed_discord_ids": "123456789012345678",
+        "browser_allowed_hosts": "owned.example.org,static.owned.example.org",
+        "default_start_url": "https://owned.example.org/",
+        "browser_runtime": "process",
+        "enable_docs": False,
+    }
+    Settings(_env_file=None, **base)  # pyright: ignore[reportCallIssue]
+
+    for changes in (
+        {"base_url": "http://browser.example.org"},
+        {"allowed_discord_ids": ""},
+        {"browser_allowed_hosts": ""},
+        {"default_start_url": "https://other.example.org"},
+        {"enable_docs": True},
+    ):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, **(base | changes))  # pyright: ignore[reportCallIssue]
