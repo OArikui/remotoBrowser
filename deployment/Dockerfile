@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # OCIの初期構成: APIとBrowser Runtime(Xvfb + x11vnc + Chromium)を同居させる。
 # 接続先は完全一致ホスト許可リストで制限し、出口フィルタはdeployment/ociを参照。
-FROM python:3.13-slim-bookworm
+FROM python:3.13-slim-bookworm AS builder
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -20,7 +20,7 @@ COPY src ./src
 
 # Playwright's Debian dependencies bring in an additional system Python runtime.
 # Keep noVNC's static UI, then purge unused Python 3.11 packages and temp build
-# environments. The application itself runs on the Python 3.13 base interpreter.
+# environments. The application itself runs on the Python 3.13 interpreter.
 RUN pip install . \
  && playwright install --with-deps chromium \
  && mkdir -p /opt/novnc \
@@ -49,14 +49,25 @@ COPY frontend ./frontend
 RUN useradd --create-home --uid 10001 app \
  && mkdir -p /app/data \
  && chown app:app /app/data
-USER app
 
-ENV BROWSER_RUNTIME=process \
+# Copy only the builder's final filesystem into a fresh image. This discards
+# superseded package files from the builder's lower layers, which image scanners
+# otherwise still inspect even though those files are no longer in the merged FS.
+FROM scratch AS runtime
+COPY --from=builder / /
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    BROWSER_RUNTIME=process \
     NOVNC_DIR=/opt/novnc \
     FRONTEND_DIR=/app/frontend \
     DATABASE_PATH=/app/data/app.db \
     BIND_HOST=0.0.0.0 \
     PORT=8080
+
+WORKDIR /app
+USER app
 
 EXPOSE 8080
 ENTRYPOINT ["/usr/bin/tini", "--"]
