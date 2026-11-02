@@ -76,6 +76,7 @@ async def vnc_proxy(websocket: WebSocket, session_id: str) -> None:
         cancelled = True
         log.debug("VNC proxy cancelled during disconnect session=%s", session_id)
     finally:
+
         async def close_tunnel() -> None:
             """Close both tunnel tasks and sockets without leaking cancellation."""
             await asyncio.gather(*tasks, return_exceptions=True)
