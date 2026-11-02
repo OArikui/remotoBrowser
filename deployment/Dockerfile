@@ -17,16 +17,16 @@ RUN apt-get update \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
+
+# Playwright installs browser dependencies through apt. Apply patched Python
+# package versions afterwards so dependency setup cannot reintroduce old versions.
 RUN pip install . \
  && playwright install --with-deps chromium \
- # Playwright installs browser dependencies through apt. Re-apply patched
- # Python package versions afterwards so those packages cannot reintroduce
- # vulnerable versions into the final image.
  && python -m pip install --no-cache-dir --upgrade --force-reinstall \
       "setuptools>=78.1.1" \
       "msgpack>=1.2.3" \
       "urllib3>=2.8.0" \
- && python -c "from importlib.metadata import version; assert version('setuptools') >= '78.1.1'; assert version('msgpack') >= '1.2.3'; assert version('urllib3') >= '2.8.0'" \
+ && python -c "from importlib.metadata import version; from pip._vendor.packaging.version import Version; assert Version(version('setuptools')) >= Version('78.1.1'); assert Version(version('msgpack')) >= Version('1.2.3'); assert Version(version('urllib3')) >= Version('2.8.0')" \
  && rm -rf /var/lib/apt/lists/* \
  && chmod -R a+rX /ms-playwright
 
