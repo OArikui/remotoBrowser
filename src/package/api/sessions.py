@@ -78,7 +78,9 @@ async def vnc_proxy(websocket: WebSocket, session_id: str) -> None:
     finally:
 
         async def close_tunnel() -> None:
-            """Close both tunnel tasks and sockets without leaking cancellation."""
+            """Cancel tunnel tasks and close sockets without leaking cancellation."""
+            for task in tasks:
+                task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             writer.close()
             with contextlib.suppress(Exception):
