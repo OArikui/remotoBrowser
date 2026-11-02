@@ -18,17 +18,21 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-# Playwright installs browser dependencies through apt. Apply patched Python
-# package versions afterwards so dependency setup cannot reintroduce old versions.
+# Playwright's Debian dependencies bring in older system-Python packages
+# that are not used by this Python 3.13 application. Keep noVNC's static UI,
+# then remove those distro packages from the final image.
 RUN pip install . \
  && playwright install --with-deps chromium \
+ && mkdir -p /opt/novnc \
+ && cp -a /usr/share/novnc/. /opt/novnc/ \
+ && apt-get purge -y python3-msgpack python3-setuptools python3-urllib3 \
  && python -m pip install --no-cache-dir --upgrade --force-reinstall \
       "setuptools>=78.1.1" \
       "msgpack>=1.2.3" \
       "urllib3>=2.8.0" \
  && python -c "from importlib.metadata import version; from pip._vendor.packaging.version import Version; assert Version(version('setuptools')) >= Version('78.1.1'); assert Version(version('msgpack')) >= Version('1.2.3'); assert Version(version('urllib3')) >= Version('2.8.0')" \
  && rm -rf /var/lib/apt/lists/* \
- && chmod -R a+rX /ms-playwright
+ && chmod -R a+rX /ms-playwright /opt/novnc
 
 COPY run.py ./
 COPY frontend ./frontend
@@ -39,7 +43,7 @@ RUN useradd --create-home --uid 10001 app \
 USER app
 
 ENV BROWSER_RUNTIME=process \
-    NOVNC_DIR=/usr/share/novnc \
+    NOVNC_DIR=/opt/novnc \
     FRONTEND_DIR=/app/frontend \
     DATABASE_PATH=/app/data/app.db \
     BIND_HOST=0.0.0.0 \
