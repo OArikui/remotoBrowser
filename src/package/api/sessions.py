@@ -73,16 +73,27 @@ async def vnc_proxy(websocket: WebSocket, session_id: str) -> None:
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     except asyncio.CancelledError:
         # Treat ASGI task cancellation during a WebSocket disconnect as tunnel shutdown.
-        # The cleanup below must finish before this connection handler returns.
         cancelled = True
         log.debug("VNC proxy cancelled during disconnect session=%s", session_id)
     finally:
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        writer.close()
-        with contextlib.suppress(Exception):
-            await asyncio.wait_for(writer.wait_closed(), timeout=2)
-        if not cancelled:
+        async def close_tunnel() -> None:
+            """Close both tunnel tasks and sockets without leaking cancellation."""
+            await asyncio.gather(*tasks, return_exceptions=True)
+            writer.close()
             with contextlib.suppress(Exception):
-                await websocket.close()
+                await asyncio.wait_for(writer.wait_closed(), timeout=2)
+            if not cancelled:
+                with contextlib.suppress(Exception):
+                    await websocket.close()
+
+        cleanup_task = asyncio.create_task(close_tunnel())
+        # ASGI servers may cancel the handler again while a client disconnects.
+        # Shield cleanup so the TestClient portal and production event loop both
+        # observe a completed handler instead of a cancelled cleanup future.
+        while not cleanup_task.done():
+            try:
+                await asyncio.shield(cleanup_task)
+            except asyncio.CancelledError:
+                cancelled = True
+                log.debug("VNC proxy cleanup shielded from cancellation session=%s", session_id)
+        await cleanup_task
