@@ -18,6 +18,11 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install . \
+ && python -m pip install --no-cache-dir --upgrade \
+      "setuptools>=78.1.1" \
+      "msgpack>=1.2.3" \
+      "urllib3>=2.8.0" \
+ && python -m pip check \
  && playwright install --with-deps chromium \
  && rm -rf /var/lib/apt/lists/* \
  && chmod -R a+rX /ms-playwright
