@@ -9,7 +9,7 @@ services:
     environment:
       PORT: "8080"
     ports:
-      - "8000:8080" # BASE_URL=http://localhost:8000 と対応させる
+      - "127.0.0.1:8000:8080" # BASE_URL=http://localhost:8000 と対応させる
     volumes:
       - appdata:/app/data
     shm_size: "1gb" # Chromiumの共有メモリ

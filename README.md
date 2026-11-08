@@ -12,18 +12,57 @@ Discordアカウントでログインし、Webブラウザからサーバー上�
    - Client ID / Client Secret を控える(Botは不要、scopeは `identify` のみ)
 2. **`.env` を作る**: `cp .env.example .env` して、`APP_SECRET_KEY`・`DISCORD_CLIENT_ID`・`DISCORD_CLIENT_SECRET` を埋める
 3. **自分のDiscord IDを `ALLOWED_DISCORD_IDS` に入れる**(Discordの設定 → 詳細設定 → 開発者モードON → 自分を右クリック → IDをコピー)。空のままだと誰でも使えてしまうので、公開前は必須です
-4. **Dockerで起動して動作確認**: `docker compose -f deployment/compose.yaml up --build` → <http://localhost:8000>
+4. **Dockerで起動して動作確認**: `docker compose -f deployment/compose.yaml up --build -d` → <http://localhost:8000> (既定ではPC内からのみアクセス可能)
 5. **GitHubにpush**してCIが通ることを確認(`.github/workflows/ci.yml`)
 
 ## 起動方法
 
 ### Docker(推奨・実ブラウザが動く)
 
-```bash
-cp .env.example .env   # 編集してから
-docker compose -f deployment/compose.yaml up --build
-# http://localhost:8000 を開く
+#### Windows PowerShell
+
+```powershell
+Copy-Item .env.example .env
+# 表示された文字列を .env の APP_SECRET_KEY に貼り付ける
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+notepad .env
+
+# 設定ファイルの検証
+docker compose -f deployment/compose.yaml config
+
+# ビルドしてバックグラウンド起動
+docker compose -f deployment/compose.yaml up --build -d
+docker compose -f deployment/compose.yaml ps
+docker compose -f deployment/compose.yaml logs -f app
 ```
+
+#### macOS / Linux
+
+```bash
+cp .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+# 生成値とDiscord OAuth2情報を .env に設定してから実行
+docker compose -f deployment/compose.yaml config
+docker compose -f deployment/compose.yaml up --build -d
+docker compose -f deployment/compose.yaml logs -f app
+```
+
+`.env` では `APP_SECRET_KEY`、`DISCORD_CLIENT_ID`、`DISCORD_CLIENT_SECRET`、
+`ALLOWED_DISCORD_IDS` を設定してください。`ALLOWED_DISCORD_IDS` には利用を許可する
+DiscordユーザーIDを指定します。Discord Developer Portalに登録するRedirect URIは
+`http://localhost:8000/auth/callback` です。
+
+停止するときは次を実行します。
+
+```powershell
+docker compose -f deployment/compose.yaml down
+```
+
+DBは `appdata` ボリュームに保存されるため、通常の `down` では保持されます。
+`down -v` はDBを含むボリュームを削除するので注意してください。
+Composeの公開ポートは既定で `127.0.0.1:8000` に限定しています。LANやインターネットへ
+公開する用途ではなく、外部公開にはTLS・リバースプロキシ・利用者制限などを含む
+別途のデプロイ設定が必要です。
 
 ### ローカル(UI確認だけ・実ブラウザなし)
 
